@@ -111,6 +111,62 @@ describe('Account API E2E', () => {
     expect(res.text).toBe('0');
   });
 
+  it('10. Concurrency: must handle simultaneous withdrawals without allowing negative balance', async () => {
+    await request(app.getHttpServer())
+      .post('/event')
+      .send({ type: 'deposit', destination: 'account-race', amount: 50 });
+
+    const withdrawRequests = Array.from({ length: 50 }).map(() =>
+      request(app.getHttpServer())
+        .post('/event')
+        .send({ type: 'withdraw', origin: 'account-race', amount: 10 }),
+    );
+
+    const responses = await Promise.all(withdrawRequests);
+
+    const successCount = responses.filter((r) => r.status === 201).length;
+    const failedCount = responses.filter((r) => r.status === 404).length;
+
+    expect(successCount).toBe(5);
+    expect(failedCount).toBe(45);
+
+    const finalBalance = await request(app.getHttpServer()).get(
+      '/balance?account_id=account-race',
+    );
+    expect(finalBalance.text).toBe('0');
+  });
+
+  it('11. Concurrency: simultaneous deposits and withdrawals must calculate final balance accurately', async () => {
+    await request(app.getHttpServer()).post('/event').send({
+      type: 'deposit',
+      destination: 'account-concurrent-mix',
+      amount: 100,
+    });
+
+    const deposits = Array.from({ length: 10 }).map(() =>
+      request(app.getHttpServer()).post('/event').send({
+        type: 'deposit',
+        destination: 'account-concurrent-mix',
+        amount: 10,
+      }),
+    );
+
+    const withdrawals = Array.from({ length: 10 }).map(() =>
+      request(app.getHttpServer()).post('/event').send({
+        type: 'withdraw',
+        origin: 'account-concurrent-mix',
+        amount: 10,
+      }),
+    );
+
+    await Promise.all([...deposits, ...withdrawals]);
+
+    const finalBalance = await request(app.getHttpServer()).get(
+      '/balance?account_id=account-concurrent-mix',
+    );
+    expect(finalBalance.text).toBe('100');
+  });
+
   describe('Edge Cases', () => {
     it('should return 404 when withdrawing amount greater than available balance and preserve state', async () => {
       const resWithdraw = await request(app.getHttpServer())
