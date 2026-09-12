@@ -1,34 +1,35 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, HttpStatus, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { AccountsService } from './accounts.service.js';
-import { CreateAccountDto } from './dto/create-account.dto.js';
-import { UpdateAccountDto } from './dto/update-account.dto.js';
+import { EventDto } from './dto/event.dto.js';
 
-@Controller('accounts')
+@Controller()
 export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
 
-  @Post()
-  create(@Body() createAccountDto: CreateAccountDto) {
-    return this.accountsService.create(createAccountDto);
+  @Post('reset')
+  @HttpCode(HttpStatus.OK)
+  @Header('Content-Type', 'text/plain')
+  reset(): string {
+    this.accountsService.reset();
+    return 'OK';
   }
 
-  @Get()
-  findAll() {
-    return this.accountsService.findAll();
+  @Get('balance')
+  getBalance(@Query('account_id') accountId: string, @Res() res: Response): Response {
+    const balance = this.accountsService.getBalance(accountId);
+    if (balance === null) {
+      return res.status(HttpStatus.NOT_FOUND).type('text/plain').send('0');
+    }
+    return res.status(HttpStatus.OK).type('text/plain').send(balance.toString());
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.accountsService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateAccountDto: UpdateAccountDto) {
-    return this.accountsService.update(+id, updateAccountDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.accountsService.remove(+id);
+  @Post('event')
+  handleEvent(@Body() dto: EventDto, @Res() res: Response): Response {
+    const result = this.accountsService.handleEvent(dto);
+    if (!result) {
+      return res.status(HttpStatus.NOT_FOUND).type('text/plain').send('0');
+    }
+    return res.status(HttpStatus.CREATED).json(result);
   }
 }
